@@ -89,9 +89,7 @@ class ProfferBehavior extends Behavior
                 $path->createPathFolder();
 
                 if ($this->moveUploadedFile($entity->get($field)['tmp_name'], $path->fullPath())) {
-                    $eventData = ['path' => $path, 'image' => $path->fullPath()];
-                    $event = new Event('Proffer.afterCreateImage', $entity, $eventData);
-                    $this->_table->eventManager()->dispatch($event);
+                    $imagePaths = [$path->fullPath()];
 
                     $entity->set($field, $path->getFilename());
                     $entity->set($settings['dir'], $path->getSeed());
@@ -106,14 +104,11 @@ class ProfferBehavior extends Behavior
                         }
 
                         $thumbnailPaths = $imageTransform->processThumbnails($settings);
-                        if (!empty($thumbnailPaths) && is_array($thumbnailPaths)) {
-                            foreach ($thumbnailPaths as $thumbnailPath) {
-                                $eventData = ['path' => $path, 'image' => $thumbnailPath];
-                                $event = new Event('Proffer.afterCreateImage', $entity, $eventData);
-                                $this->_table->eventManager()->dispatch($event);
-                            }
-                        }
+                        $imagePaths = array_merge($imagePaths, $thumbnailPaths);
                     }
+                    $eventData = ['path' => $path, 'images' => $imagePaths];
+                    $event = new Event('Proffer.afterCreateImage', $entity, $eventData);
+                    $this->_table->eventManager()->dispatch($event);
                 } else {
                     throw new Exception('Cannot upload file');
                 }
@@ -140,12 +135,14 @@ class ProfferBehavior extends Behavior
         foreach ($this->config() as $field => $settings) {
             $dir = $entity->get($settings['dir']);
 
+            if (!$path) {
+                $path = new ProfferPath($this->_table, $entity, $field, $settings);
+            }
+
+            $event = new Event('Proffer.beforeDeleteFolder', $entity, ['path' => $path]);
+            $this->_table->eventManager()->dispatch($event);
+
             if (!empty($entity) && !empty($dir)) {
-                if (!$path) {
-                    $path = new ProfferPath($this->_table, $entity, $field, $settings);
-                }
-                $event = new Event('Proffer.beforeDeleteFolder', $entity, ['path' => $path]);
-                $this->_table->eventManager()->dispatch($event);
                 $path->deleteFiles($path->getFolder(), true);
             }
 
